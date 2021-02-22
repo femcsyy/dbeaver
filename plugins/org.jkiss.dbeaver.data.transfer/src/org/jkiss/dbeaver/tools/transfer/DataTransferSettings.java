@@ -434,59 +434,21 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
     }
 
     public void sortDataPipes(DBRProgressMonitor monitor) {
-        List<DBSEntity> entities = dataPipes.stream().sequential()
-                .filter(pipe -> pipe.getProducer() != null && pipe.getProducer().getDatabaseObject() instanceof DBSEntity)
-                .map(pipe -> (DBSEntity) pipe.getProducer().getDatabaseObject())
-                .collect(Collectors.toList());
-        List<DBSEntity> simpleTables = new ArrayList<>();
-        List<DBSEntity> cyclicTables = new ArrayList<>();
-        List<DBSEntity> views = new ArrayList<>();
         try {
-            DBStructUtils.sortTableList(monitor, entities, simpleTables, cyclicTables, views);
+            dataPipes = DBStructUtils.sortByEntities(monitor, dataPipes, pipe -> {
+                IDataTransferProducer<?> producer = pipe.getProducer();
+                if (producer == null) {
+                    return null;
+                }
+                DBSObject dbsObject = producer.getDatabaseObject();
+                if (dbsObject instanceof DBSEntity) {
+                    return (DBSEntity) dbsObject;
+                }
+                return null;
+            });
         } catch (DBException e) {
             log.warn("Unable to sort database entities!");
-            return;
         }
-        dataPipes.sort((pipe1, pipe2) -> { //fixme rewrite
-            IDataTransferProducer<?> producer1 = pipe1.getProducer();
-            IDataTransferProducer<?> producer2 = pipe2.getProducer();
-            if (producer1 == null && producer2 == null) {
-                return 0;
-            } else if (producer1 == null) {
-                return 1;
-            } else if (producer2 == null) {
-                return -1;
-            }
-            DBSObject dbsObject1 = producer1.getDatabaseObject();
-            DBSObject dbsObject2 = producer2.getDatabaseObject();
-            if (dbsObject1 == null && dbsObject2 == null) {
-                return 0;
-            } else if (dbsObject1 == null) {
-                return 1;
-            } else if (dbsObject2 == null) {
-                return -1;
-            }
-            if (!(dbsObject1 instanceof DBSEntity) && !(dbsObject2 instanceof DBSEntity)) {
-                return 0;
-            } else if (!(dbsObject1 instanceof DBSEntity)) {
-                return 1;
-            } else if (!(dbsObject2 instanceof DBSEntity)) {
-                return -1;
-            }
-            DBSEntity entity1 = (DBSEntity) dbsObject1;
-            DBSEntity entity2 = (DBSEntity) dbsObject2;
-            int idx1 = views.indexOf(entity1);
-            int idx2 = views.indexOf(entity2);
-            if (idx1 != -1 || idx2 != -1) {
-                return idx1 - idx2;
-            }
-            idx1 = cyclicTables.indexOf(entity1);
-            idx2 = cyclicTables.indexOf(entity2);
-            if (idx1 != -1 || idx2 != -1) {
-                return idx1 - idx2;
-            }
-            return simpleTables.indexOf(entity1) - simpleTables.indexOf(entity2);
-        });
     }
 
     public void processPipeEarlier(@NotNull DataTransferPipe pipe) {

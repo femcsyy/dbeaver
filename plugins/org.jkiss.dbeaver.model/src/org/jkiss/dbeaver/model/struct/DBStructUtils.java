@@ -36,6 +36,7 @@ import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * DBUtils
@@ -221,6 +222,50 @@ public final class DBStructUtils {
         // 4. The rest is cycled tables
         cyclicTables.addAll(realTables);
         monitor.done();
+    }
+
+    public static <OBJ, ENTITY extends DBSEntity> List<OBJ> sortByEntities(@NotNull DBRProgressMonitor monitor, @NotNull Collection<OBJ> input, @NotNull Function<? super OBJ, ENTITY> entityExtractor) throws DBException {
+        Map<ENTITY, List<OBJ>> multiMap = new LinkedHashMap<>(input.size(), 1);
+        Collection<ENTITY> inputEntities = new ArrayList<>(input.size());
+        List<OBJ> objectsWithoutEntities = new ArrayList<>();
+        for (OBJ obj : input) {
+            ENTITY entity = entityExtractor.apply(obj);
+            if (entity == null) {
+                objectsWithoutEntities.add(obj);
+                continue;
+            }
+            inputEntities.add(entity);
+            List<OBJ> list = multiMap.computeIfAbsent(entity, k -> new ArrayList<>());
+            list.add(obj);
+        }
+        List<ENTITY> simpleTables = new ArrayList<>();
+        List<ENTITY> cyclicTables = new ArrayList<>();
+        List<ENTITY> views = new ArrayList<>();
+        sortTableList(monitor, inputEntities, simpleTables, cyclicTables, views);
+        List<OBJ> output = new ArrayList<>(input.size());
+        populateSortingOutputList(output, multiMap, simpleTables);
+        populateSortingOutputList(output, multiMap, cyclicTables);
+        populateSortingOutputList(output, multiMap, views);
+        output.addAll(objectsWithoutEntities);
+        for (Map.Entry<ENTITY, List<OBJ>> entry: multiMap.entrySet()) {
+            output.addAll(entry.getValue());
+        }
+        return output;
+    }
+
+    private static <OBJ, ENTITY> void populateSortingOutputList(@NotNull List<OBJ> output, @NotNull Map<ENTITY, List<OBJ>> multiMap, @NotNull List<ENTITY> list) {
+        for (ENTITY entity: list) {
+            List<OBJ> objList = multiMap.remove(entity);
+            if (objList != null) {
+                output.addAll(objList);
+            }
+        }
+    }
+
+    public static <OBJ, ENTITY extends DBSEntity> void sortInPlaceByEntities(@NotNull DBRProgressMonitor monitor, @NotNull List<OBJ> list, @NotNull Function<? super OBJ, ENTITY> entityExtractor) throws DBException {
+        List<OBJ> newList = sortByEntities(monitor, list, entityExtractor);
+        list.clear();
+        list.addAll(newList);
     }
 
     public static String mapTargetDataType(DBSObject objectContainer, DBSTypedObject typedObject, boolean addModifiers) {
