@@ -21,6 +21,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
@@ -543,7 +544,11 @@ public class MySQLCatalog implements
             if (session.getMetaData().getDatabaseMajorVersion() > 4) {
                 sql.append("FULL ");
             }
-            sql.append("TABLES FROM ").append(DBUtils.getQuotedIdentifier(owner));
+            if(!MySQLUtils.isMyCat(session)){
+                sql.append("TABLES FROM ").append(DBUtils.getQuotedIdentifier(owner));
+            }else{
+                sql.append("TABLES ");
+            }
             if (!session.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_USE_SERVER_SIDE_FILTERS)) {
                 // Client side filter
                 if (object != null || objectName != null) {
@@ -609,20 +614,26 @@ public class MySQLCatalog implements
             throws SQLException
         {
             StringBuilder sql = new StringBuilder();
-            sql
-                .append("SELECT * FROM ").append(MySQLConstants.META_TABLE_COLUMNS)
-                .append(" WHERE ").append(MySQLConstants.COL_TABLE_SCHEMA).append("=?");
-            if (forTable != null) {
-                sql.append(" AND ").append(MySQLConstants.COL_TABLE_NAME).append("=?");
-            }
-            sql.append(" ORDER BY ").append(MySQLConstants.COL_ORDINAL_POSITION);
+            if(!MySQLUtils.isMyCat(session)) {
+                sql
+                        .append("SELECT * FROM ").append(MySQLConstants.META_TABLE_COLUMNS)
+                        .append(" WHERE ").append(MySQLConstants.COL_TABLE_SCHEMA).append("=?");
+                if (forTable != null) {
+                    sql.append(" AND ").append(MySQLConstants.COL_TABLE_NAME).append("=?");
+                }
+                sql.append(" ORDER BY ").append(MySQLConstants.COL_ORDINAL_POSITION);
 
-            JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
-            dbStat.setString(1, owner.getName());
-            if (forTable != null) {
-                dbStat.setString(2, forTable.getName());
+                JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
+                dbStat.setString(1, owner.getName());
+                if (forTable != null) {
+                    dbStat.setString(2, forTable.getName());
+                }
+                return dbStat;
+            }else{
+                sql.append("show full columns from ").append(forTable.getName());
+                JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
+                return dbStat;
             }
-            return dbStat;
         }
 
         @Override
@@ -649,20 +660,27 @@ public class MySQLCatalog implements
             throws SQLException
         {
             StringBuilder sql = new StringBuilder();
-            sql
-                .append("SELECT * FROM ").append(MySQLConstants.META_TABLE_STATISTICS)
-                .append(" WHERE ").append(MySQLConstants.COL_TABLE_SCHEMA).append("=?");
-            if (forTable != null) {
-                sql.append(" AND ").append(MySQLConstants.COL_TABLE_NAME).append("=?");
-            }
-            sql.append(" ORDER BY ").append(MySQLConstants.COL_INDEX_NAME).append(",").append(MySQLConstants.COL_SEQ_IN_INDEX);
+            if(!MySQLUtils.isMyCat(session) || forTable == null) {
+                sql
+                        .append("SELECT * FROM ").append(MySQLConstants.META_TABLE_STATISTICS)
+                        .append(" WHERE ").append(MySQLConstants.COL_TABLE_SCHEMA).append("=?");
+                if (forTable != null) {
+                    sql.append(" AND ").append(MySQLConstants.COL_TABLE_NAME).append("=?");
+                }
+                sql.append(" ORDER BY ").append(MySQLConstants.COL_INDEX_NAME).append(",").append(MySQLConstants.COL_SEQ_IN_INDEX);
 
-            JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
-            dbStat.setString(1, owner.getName());
-            if (forTable != null) {
-                dbStat.setString(2, forTable.getName());
+                JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
+                dbStat.setString(1, owner.getName());
+                if (forTable != null) {
+                    dbStat.setString(2, forTable.getName());
+                }
+                return dbStat;
+            }else{
+                this.objectColumnName = "Key_name";
+                sql.append("show index from " + forTable.getName());
+                JDBCPreparedStatement dbStat = session.prepareStatement(sql.toString());
+                return dbStat;
             }
-            return dbStat;
         }
 
         @Nullable
@@ -670,7 +688,12 @@ public class MySQLCatalog implements
         protected MySQLTableIndex fetchObject(JDBCSession session, MySQLCatalog owner, MySQLTable parent, String indexName, JDBCResultSet dbResult)
             throws SQLException, DBException
         {
-            String indexTypeName = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_INDEX_TYPE);
+            String indexTypeName;
+            if(!MySQLUtils.isMyCat(session)) {
+                indexTypeName = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_INDEX_TYPE);
+            }else{
+                indexTypeName = JDBCUtils.safeGetString(dbResult, "Index_type");
+            }
             DBSIndexType indexType;
             if (MySQLConstants.INDEX_TYPE_BTREE.getId().equals(indexTypeName)) {
                 indexType = MySQLConstants.INDEX_TYPE_BTREE;
@@ -684,10 +707,10 @@ public class MySQLCatalog implements
                 indexType = DBSIndexType.OTHER;
             }
             return new MySQLTableIndex(
-                parent,
-                indexName,
-                indexType,
-                dbResult);
+                    parent,
+                    indexName,
+                    indexType,
+                    dbResult);
         }
 
         @Nullable
@@ -700,7 +723,11 @@ public class MySQLCatalog implements
             int ordinalPosition = JDBCUtils.safeGetInt(dbResult, MySQLConstants.COL_SEQ_IN_INDEX);
             String columnName = JDBCUtils.safeGetStringTrimmed(dbResult, MySQLConstants.COL_COLUMN_NAME);
             String ascOrDesc = JDBCUtils.safeGetStringTrimmed(dbResult, MySQLConstants.COL_COLLATION);
-            boolean nullable = "YES".equals(JDBCUtils.safeGetStringTrimmed(dbResult, MySQLConstants.COL_NULLABLE));
+            String nullableFieldName = MySQLConstants.COL_NULLABLE;
+            if(MySQLUtils.isMyCat(session)) {
+                nullableFieldName = "Null";
+            }
+            boolean nullable = "YES".equals(JDBCUtils.safeGetStringTrimmed(dbResult, nullableFieldName));
             String subPart = JDBCUtils.safeGetStringTrimmed(dbResult, MySQLConstants.COL_SUB_PART);
 
             MySQLTableColumn tableColumn = columnName == null ? null : parent.getAttribute(session.getProgressMonitor(), columnName);

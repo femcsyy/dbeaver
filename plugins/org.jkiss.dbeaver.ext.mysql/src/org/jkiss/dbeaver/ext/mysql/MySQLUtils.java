@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.ext.mysql;
 
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.mysql.model.MySQLDataSource;
+import org.jkiss.dbeaver.model.DBPDataSourceInfo;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
@@ -149,5 +150,13 @@ public class MySQLUtils {
 
     public static boolean isAlterUSerSupported(MySQLDataSource dataSource) {
         return dataSource.isMariaDB() ? dataSource.isServerVersionAtLeast(10, 2) : dataSource.isServerVersionAtLeast(5, 7);
+    }
+
+    public static boolean isMyCat(JDBCSession session) throws SQLException {
+        return session.getMetaData().getDatabaseProductVersion().toLowerCase().contains(MySQLConstants.MYCAT);
+    }
+
+    public static boolean isMyCat(DBPDataSourceInfo dataSourceInfo) {
+        return dataSourceInfo.getDatabaseProductVersion().toLowerCase().contains(MySQLConstants.MYCAT);
     }
 }

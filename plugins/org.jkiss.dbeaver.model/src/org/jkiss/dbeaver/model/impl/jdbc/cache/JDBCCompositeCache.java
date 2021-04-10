@@ -60,7 +60,7 @@ public abstract class JDBCCompositeCache<
     private final JDBCStructCache<OWNER,?,?> parentCache;
     private final Class<PARENT> parentType;
     private final Object parentColumnName;
-    private final Object objectColumnName;
+    public Object objectColumnName;
 
     private final Map<PARENT, List<OBJECT>> objectCache = new IdentityHashMap<>();
 

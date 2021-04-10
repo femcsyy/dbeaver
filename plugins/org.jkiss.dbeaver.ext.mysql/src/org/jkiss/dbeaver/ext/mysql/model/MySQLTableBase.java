@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.ext.mysql.model;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBPNamedObject2;
 import org.jkiss.dbeaver.model.DBPRefreshableObject;
@@ -136,8 +137,12 @@ public abstract class MySQLTableBase extends JDBCTable<MySQLDataSource, MySQLCat
             return DBStructUtils.generateTableDDL(monitor, this, options, false);
         }
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Retrieve table DDL")) {
+            String tableName = getFullyQualifiedName(DBPEvaluationContext.DDL);
+            if(MySQLUtils.isMyCat(session)){
+                tableName = getName();
+            }
             try (PreparedStatement dbStat = session.prepareStatement(
-                "SHOW CREATE " + (isView() ? "VIEW" : "TABLE") + " " + getFullyQualifiedName(DBPEvaluationContext.DDL))) {
+                "SHOW CREATE " + (isView() ? "VIEW" : "TABLE") + " " + tableName)) {
                 try (ResultSet dbResult = dbStat.executeQuery()) {
                     if (dbResult.next()) {
                         if (isView()) {

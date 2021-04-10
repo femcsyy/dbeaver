@@ -21,6 +21,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBPObjectStatistics;
 import org.jkiss.dbeaver.model.DBUtils;
@@ -322,8 +323,11 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics
             return;
         }
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load table status")) {
-            try (JDBCPreparedStatement dbStat = session.prepareStatement(
-                "SHOW TABLE STATUS FROM " + DBUtils.getQuotedIdentifier(getContainer()) + " LIKE '" + getName() + "'")) {
+            String sql = "SHOW TABLE STATUS FROM " + DBUtils.getQuotedIdentifier(getContainer()) + " LIKE '" + getName() + "'";
+            if(MySQLUtils.isMyCat(session)){
+                sql = "SHOW TABLE STATUS LIKE '" + getName() + "'";
+            }
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(sql)) {
                 try (JDBCResultSet dbResult = dbStat.executeQuery()) {
                     if (dbResult.next()) {
                         fetchAdditionalInfo(dbResult);
@@ -333,6 +337,8 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics
             } catch (SQLException e) {
                 throw new DBCException(e, session.getExecutionContext());
             }
+        } catch (SQLException e) {
+            throw new DBCException("", e);
         }
     }
 

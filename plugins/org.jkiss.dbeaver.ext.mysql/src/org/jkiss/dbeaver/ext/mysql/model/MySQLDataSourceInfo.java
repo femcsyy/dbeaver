@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.ext.mysql.model;
 
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSourceInfo;
 
@@ -27,6 +28,14 @@ class MySQLDataSourceInfo extends JDBCDataSourceInfo {
 
     public MySQLDataSourceInfo(JDBCDatabaseMetaData metaData) {
         super(metaData);
+    }
+
+    @Override
+    public boolean supportsResultSetLimit() {
+        if(MySQLUtils.isMyCat(this)){
+            return false;
+        }
+        return true;
     }
 
     @Override
